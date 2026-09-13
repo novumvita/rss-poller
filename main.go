@@ -142,13 +142,18 @@ func main() {
 	initFeedParser()
 	initNtfyPublisher()
 
+	processFeeds() // Call once so we don't have to wait for refresh time
+
 	ticker := time.NewTicker(time.Duration(CONFIG.RefreshTimerInSeconds) * time.Second)
 	defer ticker.Stop()
 	done := make(chan bool)
 
 	go runOnTick(ticker, done, processFeeds)
 
-	// time.Sleep(30 * time.Second)
-	// done <- true
-	// fmt.Println("Ticker stopped")
+	// TODO: HTTP server here which can:
+	// 1. Add feeds - update config
+	// 2. Stop via done
+	time.Sleep(30 * time.Second)
+	done <- true
+	fmt.Println("Ticker stopped")
 }

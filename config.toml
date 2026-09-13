@@ -2,7 +2,7 @@ ntfyTopic = "38a471f6-73f9-42bf-ace0-0612ab865982"
 ntfyServer = "https://ntfy.sh"
 feeds = [
   "https://novumvita.github.io/index.xml",
-  # "https://naveensd.com/rss.xml",
+  "https://naveensd.com/rss.xml",
 ]
 refreshTimerInSeconds = 5
 dbPath = "./feed.db"
