@@ -3,10 +3,14 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
+	"net/url"
+	"os"
 	"time"
 
+	"github.com/AnthonyHewins/gotfy"
 	"github.com/mmcdole/gofeed"
 	"github.com/pelletier/go-toml/v2"
 	"gorm.io/driver/sqlite"
@@ -16,6 +20,7 @@ import (
 
 var DB *gorm.DB
 var FP *gofeed.Parser
+var NTFY *gotfy.Publisher
 
 func DBHelper[T any]() gorm.Interface[T] {
 	return gorm.G[T](DB)
@@ -23,7 +28,7 @@ func DBHelper[T any]() gorm.Interface[T] {
 
 func initDB() {
 	var err error
-	DB, err = gorm.Open(sqlite.Open("./feed.db"), &gorm.Config{
+	DB, err = gorm.Open(sqlite.Open(CONFIG.DbPath), &gorm.Config{
 		Logger: logger.New(
 			log.Default(),
 			logger.Config{
@@ -42,6 +47,11 @@ func initFeedParser() {
 	FP = gofeed.NewParser()
 }
 
+func initNtfyPublisher() {
+	server, _ := url.Parse(CONFIG.NtfyServer)
+	NTFY, _ = gotfy.NewPublisher(server)
+}
+
 type FeedItem struct {
 	FeedTitle string
 	Title     string
@@ -52,7 +62,24 @@ func queryFeed(feedUrl string) (feed *gofeed.Feed, err error) {
 	return FP.ParseURL(feedUrl)
 }
 
-func notifyAboutItem(feed *gofeed.Feed, item *gofeed.Item) {}
+func notifyAboutItem(feed *gofeed.Feed, item *gofeed.Item) {
+	itemUrl, err := url.Parse(item.GUID)
+	if err != nil {
+		log.Println("Error parsing item URL. Skipping notification.")
+		return
+	}
+	_, err = NTFY.SendMessage(
+		context.Background(), &gotfy.Message{
+			Topic:    CONFIG.NtfyTopic,
+			Title:    feed.Title,
+			Message:  item.Title,
+			ClickURL: itemUrl,
+		},
+	)
+	if err != nil {
+		log.Println("Error publishing notification.")
+	}
+}
 
 func processItem(feed *gofeed.Feed, item *gofeed.Item) {
 	c := context.Background()
@@ -81,6 +108,9 @@ func processFeeds() {
 type Config struct {
 	Feeds                 []string
 	RefreshTimerInSeconds int
+	NtfyTopic             string
+	NtfyServer            string
+	DbPath                string
 }
 
 var CONFIG *Config
@@ -98,21 +128,19 @@ func runOnTick(ticker *time.Ticker, done chan bool, f func()) {
 }
 
 func main() {
-	initDB()
-	initFeedParser()
 
-	doc := `
-	feeds = [
-	"https://novumvita.github.io/index.xml",
-	"https://naveensd.com/rss.xml",
-	]
-	refreshTimerInSeconds = 5
-	`
+	configPath := flag.String("config", "./config.toml", "Path to the config file.")
+	flag.Parse()
+	configData, err := os.ReadFile(*configPath)
 
-	err := toml.Unmarshal([]byte(doc), &CONFIG)
+	err = toml.Unmarshal(configData, &CONFIG)
 	if err != nil {
 		panic(err)
 	}
+
+	initDB()
+	initFeedParser()
+	initNtfyPublisher()
 
 	ticker := time.NewTicker(time.Duration(CONFIG.RefreshTimerInSeconds) * time.Second)
 	defer ticker.Stop()
@@ -120,8 +148,7 @@ func main() {
 
 	go runOnTick(ticker, done, processFeeds)
 
-	time.Sleep(30 * time.Second)
-	done <- true
-	fmt.Println("Ticker stopped")
-
+	// time.Sleep(30 * time.Second)
+	// done <- true
+	// fmt.Println("Ticker stopped")
 }
