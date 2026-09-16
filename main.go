@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"net/url"
 	"os"
 	"time"
@@ -115,20 +116,7 @@ type Config struct {
 
 var CONFIG *Config
 
-func runOnTick(ticker *time.Ticker, done chan bool, f func()) {
-	for {
-		select {
-		case <-done:
-			return
-		case t := <-ticker.C:
-			fmt.Println("Tick at", t)
-			f()
-		}
-	}
-}
-
-func main() {
-
+func readConfig() {
 	configPath := flag.String("config", "./config.toml", "Path to the config file.")
 	flag.Parse()
 	configData, err := os.ReadFile(*configPath)
@@ -137,7 +125,33 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+}
 
+func runOnTick(ticker *time.Ticker, manualTick chan bool, done chan bool, f func()) {
+	for {
+		select {
+		case <-done:
+			return
+		case t := <-ticker.C:
+			fmt.Println("Tick at", t)
+			f()
+		case <-manualTick:
+			fmt.Println("Manual tick running.")
+			f()
+		}
+	}
+}
+
+var MANUAL_TICK chan bool = make(chan bool)
+var DONE chan bool = make(chan bool)
+
+func tick(w http.ResponseWriter, req *http.Request) {
+	MANUAL_TICK <- true
+	fmt.Fprintf(w, "Manual tick triggered.")
+}
+
+func main() {
+	readConfig()
 	initDB()
 	initFeedParser()
 	initNtfyPublisher()
@@ -145,15 +159,17 @@ func main() {
 	processFeeds() // Call once so we don't have to wait for refresh time
 
 	ticker := time.NewTicker(time.Duration(CONFIG.RefreshTimerInSeconds) * time.Second)
-	defer ticker.Stop()
-	done := make(chan bool)
 
-	go runOnTick(ticker, done, processFeeds)
+	go runOnTick(ticker, MANUAL_TICK, DONE, processFeeds)
 
-	// TODO: HTTP server here which can:
+	// TODO: HTTP server endpoints here which can:
 	// 1. Add feeds - update config
 	// 2. Stop via done
+
+	http.HandleFunc("/tick", tick)
+	http.ListenAndServe(":8090", nil)
+
 	time.Sleep(30 * time.Second)
-	done <- true
+	DONE <- true
 	fmt.Println("Ticker stopped")
 }
