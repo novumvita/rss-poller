@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"time"
 
 	"github.com/AnthonyHewins/gotfy"
@@ -79,6 +80,8 @@ func notifyAboutItem(feed *gofeed.Feed, item *gofeed.Item) {
 	)
 	if err != nil {
 		log.Println("Error publishing notification.")
+	} else {
+		time.Sleep(time.Second) // Sleep to ensure notifications are properly ordered.
 	}
 }
 
@@ -95,7 +98,9 @@ func processItem(feed *gofeed.Feed, item *gofeed.Item) {
 
 func processFeed(feedUrl string) {
 	feed, _ := queryFeed(feedUrl)
-	for _, item := range feed.Items {
+	// Backward should give us items from oldest to newest.
+	// Unsure if this is part of spec. Might have to sort by item.Published to guarantee order.
+	for _, item := range slices.Backward(feed.Items) {
 		processItem(feed, item)
 	}
 }
