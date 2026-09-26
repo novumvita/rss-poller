@@ -97,7 +97,11 @@ func processItem(feed *gofeed.Feed, item *gofeed.Item) {
 }
 
 func processFeed(feedUrl string) {
-	feed, _ := queryFeed(feedUrl)
+	feed, err := queryFeed(feedUrl)
+	if err != nil {
+		log.Println("Error processing feed.", err)
+		return
+	}
 	// Backward should give us items from oldest to newest.
 	// Unsure if this is part of spec. Might have to sort by item.Published to guarantee order.
 	for _, item := range slices.Backward(feed.Items) {
@@ -106,6 +110,10 @@ func processFeed(feedUrl string) {
 }
 
 func processFeeds() {
+	if CONFIG.Feeds == nil {
+		log.Println("No feeds to poll.")
+		return
+	}
 	for _, feed := range CONFIG.Feeds {
 		processFeed(feed)
 	}
